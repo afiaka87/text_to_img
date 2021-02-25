@@ -35,7 +35,7 @@ class DeepDazeFFM:
         self.num_samples = num_samples
         self.save_freq = save_freq
         self.perceptor, self.preprocess = clip.load('ViT-B/32')
-        self.sign = 1. if invert is True else -1,
+        self.sign = 1 if invert is True else -1,
         self.workdir = '_out'
         self.tempdir = os.path.join(self.workdir, 'ttt')
         os.makedirs(self.tempdir, exist_ok=True)
@@ -45,7 +45,7 @@ class DeepDazeFFM:
         if use_fourier_feat_map:
             mgrid = fourierfm(mgrid, fourier_maps, fourier_scale)
         self.mgrid = torch.from_numpy(mgrid.astype(np.float32)).cuda()
-        self.siren_model = Siren(mgrid.shape[-1], 256, siren_layers, 3).cuda()
+        self.siren_model = Siren(mgrid.shape[-1], 256, siren_layers, 3, width=sideX, height=sideY).cuda()
 
         primed_image_enc = None
         self.img_in = None
@@ -85,20 +85,20 @@ class DeepDazeFFM:
             img = self.siren_model(self.mgrid).cpu().numpy()[0]
         save_image(img, os.path.join(self.tempdir, '%03d.jpg' % num))
 
-    def train(self, iteration, sliced_image_encode):
+    def train(self, iteration, sync_primed_image_encode):
         img_out = self.siren_model(self.mgrid)
         if self.prime_image and self.sync_cut is True:
             images_sliced = slice_images([self.img_in, img_out], self.num_samples, clip_normalize, self.uniform)
-            sliced_image_encode = self.perceptor.encode_image(images_sliced[0])
+            sync_primed_image_encode = self.perceptor.encode_image(images_sliced[0])
         else:
             images_sliced = slice_images([img_out], self.num_samples, clip_normalize, self.uniform)
         generated_image_encode = self.perceptor.encode_image(images_sliced[-1])
         loss = 0
         if self.prime_image:
-            loss += self.sign * 100 * torch.cosine_similarity(sliced_image_encode, generated_image_encode,
-                                                              dim=-1).mean()
+            loss += self.sign * 100 * torch.cosine_similarity(sync_primed_image_encode, generated_image_encode, dim=-1).mean()
+
         if self.primary_txt_enc is not None:
-            loss += self.sign * 100 * torch.cosine_similarity(self.primary_txt_enc, generated_image_encode, dim=-1).mean()
+            loss += -100 * torch.cosine_similarity(self.primary_txt_enc, generated_image_encode, dim=-1).mean()
 
         if self.fine_details_txt_enc is not None:
             images_sliced = slice_images([img_out], self.num_samples, clip_normalize, uniform=self.uniform, micro=True)

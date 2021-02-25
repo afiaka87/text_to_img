@@ -1,4 +1,5 @@
 from base64 import b64encode
+import torch
 from torch import nn
 import numpy as np
 
